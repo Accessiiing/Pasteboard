@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pasteboard 极简剪贴板智能原型</title>
+    <style>
+      /* 全局重置，采用系统默认无衬线字体，贴近原生应用感 */
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        user-select: none;
+      }
+
+      body {
+        background-color: #eae6df;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+      }
+
+      /* 剪贴板主外壳 - 严格遵循 363 x 489 px */
+      .app-container {
+        width: 363px;
+        height: 489px;
+        background-color: #fbf9f6;
+        border-radius: 8px;
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.12);
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* 顶部功能栏：高度刚好承接第一条记录前 55px 的留白需求 */
+      .app-header {
+        height: 55px;
+        padding: 15px 20px 5px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background-color: #fbf9f6;
+        z-index: 10;
+      }
+
+      .app-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #191919;
+      }
+
+      .settings-toggle-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: #706f6c;
+        font-size: 16px;
+        padding: 4px;
+        border-radius: 4px;
+        transition: background 0.2s;
+      }
+      .settings-toggle-btn:hover {
+        background: #f3efe9;
+        color: #191919;
+      }
+
+      /* 视图面板容器 */
+      .view-panel {
+        flex: 1;
+        position: relative;
+        width: 100%;
+        height: calc(100% - 55px);
+      }
+
+      /* 1. 剪贴板记录列表视图 */
+      .clipboard-view {
+        width: 100%;
+        height: 100%;
+        padding: 0 20px 10px 20px; /* 左右边距20px，下方留白10px */
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 12px; /* 卡片间距 12px */
+      }
+
+      /* 隐藏滚动条但保留滚动功能 */
+      .clipboard-view::-webkit-scrollbar {
+        width: 4px;
+      }
+      .clipboard-view::-webkit-scrollbar-thumb {
+        background: #e2dcd5;
+        border-radius: 2px;
+      }
+
+      /* 单条记录卡片布局 */
+      .record-card {
+        background-color: #ffffff;
+        border-radius: 6px;
+        padding: 10px 35px 10px 14px; /* 上下10, 左14, 右侧留出三点空间 */
+        position: relative;
+        cursor: pointer;
+        border-left: 0px solid #e0533c;
+        transition:
+          background-color 0.15s ease,
+          border-left 0.1s ease;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+        flex-shrink: 0;
+      }
+
+      /* 悬浮与激活动效 */
+      .record-card:hover {
+        background-color: #f3efe9;
+      }
+      .record-card.active {
+        border-left: 3px solid #e0533c;
+        background-color: #f3efe9;
+      }
+
+      /* 卡片内容样式 */
+      .card-text {
+        font-size: 13px;
+        color: #191919;
+        line-height: 1.4;
+        word-break: break-all;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+
+      /* 图片卡片特制预览区 */
+      .card-image-placeholder {
+        width: 100%;
+        height: 90px;
+        background-color: #fbf9f6;
+        border: 1px dashed #e2dcd5;
+        border-radius: 4px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        color: #706f6c;
+        font-size: 11px;
+        gap: 6px;
+        margin-top: 2px;
+      }
+
+      /* 三点操作组件定位 */
+      .three-dots-trigger {
+        position: absolute;
+        top: 13px;
+        right: 10px;
+        width: 20px;
+        height: 20px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        color: #706f6c;
+        background: none;
+        border: none;
+        cursor: pointer;
+        border-radius: 4px;
+        opacity: 0.5;
+        transition:
+          opacity 0.2s,
+          background 0.2s;
+      }
+      .record-card:hover .three-dots-trigger {
+        opacity: 1;
+      }
+      .three-dots-trigger:hover {
+        background-color: #e2dcd5;
+      }
+
+      /* 卡片内弹出的三点微型菜单框 */
+      .action-dropdown {
+        position: absolute;
+        top: 35px;
+        right: 10px;
+        background: #ffffff;
+        border: 1px solid #e2dcd5;
+        border-radius: 6px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        z-index: 100;
+        display: none;
+        flex-direction: column;
+        padding: 4px 0;
+        width: 75px;
+      }
+      .action-dropdown.show {
+        display: flex;
+      }
+      .action-item {
+        padding: 6px 12px;
+        font-size: 12px;
+        color: #191919;
+        background: none;
+        border: none;
+        text-align: left;
+        cursor: pointer;
+        width: 100%;
+      }
+      .action-item:hover {
+        background-color: #f3efe9;
+        color: #e0533c;
+      }
+
+      /* 2. 设置界面面板视图 */
+      .settings-view {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: #fbf9f6;
+        padding: 10px 24px 20px 24px;
+        display: none;
+        flex-direction: column;
+        gap: 20px;
+      }
+      .settings-view.show {
+        display: flex;
+      }
+
+      .setting-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .setting-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: #706f6c;
+      }
+
+      /* 路径选择组合输入框 */
+      .path-input-container {
+        display: flex;
+        gap: 8px;
+      }
+      .setting-input {
+        flex: 1;
+        padding: 8px 12px;
+        border: 1px solid #e2dcd5;
+        border-radius: 6px;
+        background-color: #ffffff;
+        font-size: 13px;
+        color: #191919;
+        outline: none;
+      }
+      .setting-input:focus {
+        border-color: #706f6c;
+      }
+      .folder-btn {
+        padding: 0 12px;
+        background-color: #ffffff;
+        border: 1px solid #e2dcd5;
+        border-radius: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        color: #191919;
+      }
+      .folder-btn:hover {
+        background-color: #f3efe9;
+      }
+
+      /* 简约的行级控制（针对开关逻辑） */
+      .setting-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 4px 0;
+      }
+
+      /* iOS/Claude 风格极简开关（Toggle Button） */
+      .toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 42px;
+        height: 24px;
+      }
+      .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+      .slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #e2dcd5;
+        transition: 0.3s;
+        border-radius: 24px;
+      }
+      .slider:before {
+        position: absolute;
+        content: "";
+        height: 18px;
+        width: 18px;
+        left: 3px;
+        bottom: 3px;
+        background-color: white;
+        transition: 0.3s;
+        border-radius: 50%;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      }
+      input:checked + .slider {
+        background-color: #191919; /* 采用极简碳黑作为开启状态色 */
+      }
+      input:checked + .slider:before {
+        transform: translateX(18px);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 剪贴板主视窗 -->
+    <div class="app-container">
+      <!-- 头部区域 -->
+      <div class="app-header">
+        <span class="app-title" id="panel-title">剪贴板历史</span>
+        <button
+          class="settings-toggle-btn"
+          id="toggle-settings-btn"
+          title="切换设置/主页"
+        >
+          ⚙️
+        </button>
+      </div>
+
+      <!-- 视图视窗 -->
+      <div class="view-panel">
+        <!-- 视图一：历史列表面板 -->
+        <div class="clipboard-view" id="clipboard-panel">
+          <!-- 记录 1：富文本代码卡片示例 -->
+          <div class="record-card active" onclick="selectCard(this)">
+            <div
+              class="card-text"
+              style="font-family: monospace; color: #2e7d32"
+            >
+              npm install fastapi-boilerplate --save
+            </div>
+            <button
+              class="three-dots-trigger"
+              onclick="toggleMenu(event, 'menu-1')"
+            >
+              •••
+            </button>
+            <div class="action-dropdown" id="menu-1">
+              <button class="action-item">删除</button>
+              <button class="action-item">固定</button>
+              <button class="action-item">保存</button>
+            </div>
+          </div>
+
+          <!-- 记录 2：图片内容卡片示例 -->
+          <div class="record-card" onclick="selectCard(this)">
+            <div class="card-text" style="font-weight: 600">[图片截图]</div>
+            <div class="card-image-placeholder">
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#706F6C"
+                stroke-width="2"
+              >
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <polyline points="21 15 16 10 5 21" />
+              </svg>
+              <span>screenshot_20260524_023.png</span>
+            </div>
+            <button
+              class="three-dots-trigger"
+              onclick="toggleMenu(event, 'menu-2')"
+            >
+              •••
+            </button>
+            <div class="action-dropdown" id="menu-2">
+              <button class="action-item">删除</button>
+              <button class="action-item">固定</button>
+              <button class="action-item">保存</button>
+            </div>
+          </div>
+
+          <!-- 记录 3：富文本链接卡片示例 -->
+          <div class="record-card" onclick="selectCard(this)">
+            <div class="card-text">
+              <span style="color: #e0533c; font-weight: bold">[链接]</span>
+              Anthropic Claude 研究模型技术开发栈指标文档索引...
+            </div>
+            <button
+              class="three-dots-trigger"
+              onclick="toggleMenu(event, 'menu-3')"
+            >
+              •••
+            </button>
+            <div class="action-dropdown" id="menu-3">
+              <button class="action-item">删除</button>
+              <button class="action-item">固定</button>
+              <button class="action-item">保存</button>
+            </div>
+          </div>
+
+          <!-- 记录 4：长段落文本卡片示例 -->
+          <div class="record-card" onclick="selectCard(this)">
+            <div class="card-text">
+              设计理念核心：保证整个应用运行在轻量级宿主中。内存占用通过前端 DOM
+              虚拟节点控制，保证只加载可见区域的 4-5 条结构体。
+            </div>
+            <button
+              class="three-dots-trigger"
+              onclick="toggleMenu(event, 'menu-4')"
+            >
+              •••
+            </button>
+            <div class="action-dropdown" id="menu-4">
+              <button class="action-item">删除</button>
+              <button class="action-item">固定</button>
+              <button class="action-item">保存</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 视图二：设置面板 -->
+        <div class="settings-view" id="settings-panel">
+          <!-- 设置项 1：自动保存位置 -->
+          <div class="setting-group">
+            <label class="setting-label">内容自动保存位置</label>
+            <div class="path-input-container">
+              <input
+                type="text"
+                class="setting-input"
+                value="D:\Pasteboard\Captures"
+                readonly
+              />
+              <button
+                class="folder-btn"
+                onclick="alert('此处将唤起系统的文件管理器选定路径')"
+              >
+                📁
+              </button>
+            </div>
+          </div>
+
+          <!-- 设置项 2：留存条数 -->
+          <div class="setting-group">
+            <label class="setting-label">留存条数限制 (100 - 300 条)</label>
+            <input
+              type="number"
+              class="setting-input"
+              value="200"
+              min="100"
+              max="300"
+            />
+          </div>
+
+          <!-- 设置项 3：关机自动清除 -->
+          <div class="setting-row">
+            <div class="setting-group">
+              <label class="setting-label" style="color: #191919"
+                >关机时自动清除未固定信息</label
+              >
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <!-- 设置项 4：开机自启 -->
+          <div class="setting-row">
+            <div class="setting-group">
+              <label class="setting-label" style="color: #191919"
+                >开机时静默自动启动</label
+              >
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 简易动态控制交互逻辑 -->
+    <script>
+      // 1. 卡片单击高亮切换（克制朱红左侧边条）
+      function selectCard(cardElement) {
+        document.querySelectorAll(".record-card").forEach((card) => {
+          card.classList.remove("active");
+        });
+        cardElement.classList.add("active");
+      }
+
+      // 2. 三点操作微型菜单的显示与阻断
+      function toggleMenu(event, menuId) {
+        event.stopPropagation(); // 阻止触发卡片本身的点击高亮事件
+
+        // 关闭其他已经打开的菜单
+        document.querySelectorAll(".action-dropdown").forEach((menu) => {
+          if (menu.id !== menuId) menu.classList.remove("show");
+        });
+
+        const currentMenu = document.getElementById(menuId);
+        currentMenu.classList.toggle("show");
+      }
+
+      // 点击页面其他任意地方时，自动关闭已弹出的菜单
+      document.addEventListener("click", () => {
+        document.querySelectorAll(".action-dropdown").forEach((menu) => {
+          menu.classList.remove("show");
+        });
+      });
+
+      // 3. 顶栏按钮控制：主面板与设置界面的平滑切换
+      const toggleBtn = document.getElementById("toggle-settings-btn");
+      const clipPanel = document.getElementById("clipboard-panel");
+      const setPanel = document.getElementById("settings-panel");
+      const panelTitle = document.getElementById("panel-title");
+
+      toggleBtn.addEventListener("click", () => {
+        if (
+          setPanel.style.display === "flex" ||
+          setPanel.classList.contains("show")
+        ) {
+          // 切换回主列表
+          setPanel.classList.remove("show");
+          clipPanel.style.display = "flex";
+          panelTitle.innerText = "剪贴板历史";
+          toggleBtn.innerText = "⚙️";
+        } else {
+          // 切换到设置
+          clipPanel.style.display = "none";
+          setPanel.classList.add("show");
+          panelTitle.innerText = "应用系统设置";
+          toggleBtn.innerText = "↩";
+        }
+      });
+    </script>
+  </body>
+</html>
