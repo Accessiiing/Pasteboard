@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pasteboard</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="panel">
+      <!-- ============ 剪贴板视图 ============ -->
+      <section class="view active" id="view-clipboard">
+        <div class="header">
+          <div class="header-title">剪贴板</div>
+          <div class="header-actions">
+            <button class="icon-btn" id="btn-search" title="搜索">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.5" y2="16.5" />
+              </svg>
+            </button>
+            <button class="text-action" id="btn-clear">全部清空</button>
+          </div>
+        </div>
+
+        <div class="search-bar" id="search-bar">
+          <input type="text" id="search-input" placeholder="搜索剪贴板内容…" />
+        </div>
+
+        <div class="list" id="list"></div>
+
+        <div class="footer" id="footer">点击条目即可粘贴 · 共 0 条记录</div>
+      </section>
+
+      <!-- ============ 设置视图 ============ -->
+      <section class="view" id="view-settings">
+        <div class="header">
+          <div class="header-title">
+            <button class="icon-btn back-btn" id="btn-back" title="返回">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+            </button>
+            设置
+          </div>
+          <span class="version">v1.0.0</span>
+        </div>
+
+        <div class="settings-body">
+          <div class="group-label">存储设置</div>
+
+          <div class="s-card">
+            <div class="s-card-title">自动保存位置</div>
+            <div class="path-row">
+              <input type="text" class="path-input" id="save-path" readonly />
+              <button class="folder-btn" id="btn-folder" title="选择文件夹">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="s-card">
+            <div class="s-row">
+              <div>
+                <div class="s-card-title">最大记录条数</div>
+                <div class="s-card-sub">100 ~ 300 条，默认 200</div>
+              </div>
+              <input type="number" class="num-input" id="max-records" min="100" max="300" value="200" />
+            </div>
+          </div>
+
+          <div class="group-label">系统设置</div>
+
+          <div class="s-card">
+            <div class="s-row">
+              <div>
+                <div class="s-card-title">关机时清除记录</div>
+                <div class="s-card-sub">关机后删除全部剪贴板记录</div>
+              </div>
+              <label class="toggle">
+                <input type="checkbox" id="clear-shutdown" />
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="s-card">
+            <div class="s-row">
+              <div>
+                <div class="s-card-title">开机自启</div>
+                <div class="s-card-sub">登录 Windows 时自动在后台启动</div>
+              </div>
+              <label class="toggle">
+                <input type="checkbox" id="autostart" />
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="group-label">快捷键</div>
+
+          <div class="s-card">
+            <div class="s-row">
+              <div>
+                <div class="s-card-title">唤起快捷键</div>
+                <div class="s-card-sub" id="hotkey-sub">点击右侧按键组合录入快捷键</div>
+              </div>
+              <div class="hotkey-display">
+                <span id="hotkey-caps"></span>
+                <button class="edit-hotkey" id="btn-edit-hotkey" title="录入快捷键">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="toast" id="toast"></div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

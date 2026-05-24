@@ -1,0 +1,18 @@
+# Rust / Tauri
+/src-tauri/target/
+/src-tauri/gen/schemas/
+
+# Node
+/node_modules/
+
+# 预览与临时产物
+/preview-*.png
+/shot.mjs
+/src-tauri/icons/icon-source.png
+
+# 不上传内容
+pasteboard.md
+pasteboard.pdf
+pasteboard.pix
+paste.html
+clipboard.html
