@@ -16,5 +16,8 @@ pasteboard.pdf
 pasteboard.pix
 paste.html
 clipboard.html
-
+/dist-out
 /其他文件
+
+# 运行编译脚本
+build.ps1

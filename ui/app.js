@@ -157,6 +157,16 @@ document.addEventListener("click", (e) => {
 });
 
 // ---------- 顶部操作 ----------
+function collapseSearch() {
+  const bar = document.getElementById("search-bar");
+  if (bar.classList.contains("show")) {
+    bar.classList.remove("show");
+    searchTerm = "";
+    document.getElementById("search-input").value = "";
+    renderList();
+  }
+}
+
 document.getElementById("btn-search").addEventListener("click", () => {
   const bar = document.getElementById("search-bar");
   bar.classList.toggle("show");
@@ -275,6 +285,7 @@ window.addEventListener("keydown", (e) => {
 // ---------- 后端事件 ----------
 listen("records-updated", () => loadRecords());
 listen("navigate", (e) => showView(e.payload));
+listen("tauri://blur", collapseSearch);
 
 // ---------- 初始化 ----------
 loadRecords();
