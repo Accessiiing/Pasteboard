@@ -50,10 +50,10 @@ pub fn paste_record(app: &AppHandle, id: i64) -> Result<(), String> {
     *state.last_hash.lock().unwrap() = Some(hash);
 
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.hide();
+        crate::window::hide(&window);
     }
 
-    // 让焦点回到目标窗口后再发送粘贴
+    // 隐藏后稍等，确保剪贴板写入与窗口隐藏已就绪，再发送粘贴
     std::thread::sleep(Duration::from_millis(120));
     send_paste();
 

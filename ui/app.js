@@ -167,11 +167,18 @@ function collapseSearch() {
   }
 }
 
-document.getElementById("btn-search").addEventListener("click", () => {
+document.getElementById("btn-search").addEventListener("click", async () => {
   const bar = document.getElementById("search-bar");
   bar.classList.toggle("show");
-  if (bar.classList.contains("show")) document.getElementById("search-input").focus();
-  else { searchTerm = ""; document.getElementById("search-input").value = ""; renderList(); }
+  if (bar.classList.contains("show")) {
+    // 浮层默认不抢焦点；要打字搜索时，先让窗口临时获得键盘焦点（类似 Win+V）。
+    if (hasTauri) await invoke("focus_window");
+    document.getElementById("search-input").focus();
+  } else {
+    searchTerm = "";
+    document.getElementById("search-input").value = "";
+    renderList();
+  }
 });
 document.getElementById("search-input").addEventListener("input", (e) => {
   searchTerm = e.target.value; renderList();

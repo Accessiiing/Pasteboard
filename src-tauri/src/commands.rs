@@ -185,8 +185,14 @@ pub fn choose_folder(app: AppHandle) -> Option<String> {
 #[tauri::command]
 pub fn hide_window(app: AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.hide();
+        crate::window::hide(&window);
     }
+}
+
+// 让浮层临时获得键盘焦点（前端点击搜索框前调用），使搜索输入能接收键盘。
+#[tauri::command]
+pub fn focus_window(app: AppHandle) {
+    crate::window::focus_window(&app);
 }
 
 // 供前端在“被调用置顶”后获取最新时间戳（保留以便后续扩展）。
