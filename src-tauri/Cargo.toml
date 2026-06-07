@@ -1,6 +1,6 @@
 [package]
 name = "pasteboard-v2"
-version = "1.0.0"
+version = "1.0.3"
 description = "Pasteboard v2 - 极简增强剪贴板"
 authors = ["lida"]
 edition = "2021"
