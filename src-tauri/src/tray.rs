@@ -18,11 +18,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "settings" => {
                 let _ = app.emit_to("main", "navigate", "settings");
-                crate::window::show_at_cursor(app);
+                crate::window::show_focused(app);
             }
             "clipboard" => {
                 let _ = app.emit_to("main", "navigate", "clipboard");
-                crate::window::show_at_cursor(app);
+                crate::window::show_focused(app);
             }
             "quit" => app.exit(0),
             _ => {}
@@ -36,7 +36,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             {
                 let app = tray.app_handle();
                 let _ = app.emit_to("main", "navigate", "clipboard");
-                crate::window::show_at_cursor(app);
+                crate::window::show_focused(app);
             }
         })
         .build(app)?;

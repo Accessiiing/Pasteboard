@@ -74,16 +74,20 @@ pub fn run() {
                     WindowEvent::Focused(false) => {
                         let st = w.state::<AppState>();
                         if !st.dialog_open.load(Ordering::SeqCst) {
-                            let _ = w.hide();
+                            window::hide(&w);
                         }
                     }
                     WindowEvent::CloseRequested { api, .. } => {
                         api.prevent_close();
-                        let _ = w.hide();
+                        window::hide(&w);
                     }
                     _ => {}
                 });
             }
+
+            // no-activate 浮层失焦事件不触发，改由全局钩子（前台变化 + 鼠标点击）实现「点别处自动收起」。
+            #[cfg(windows)]
+            window::install_dismiss_hooks(&handle);
 
             Ok(())
         })
@@ -99,6 +103,7 @@ pub fn run() {
             commands::set_hotkey,
             commands::choose_folder,
             commands::hide_window,
+            commands::focus_window,
             commands::current_ms,
         ])
         .build(tauri::generate_context!())

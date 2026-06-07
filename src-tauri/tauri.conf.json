@@ -22,7 +22,7 @@
         "alwaysOnTop": true,
         "visible": false,
         "center": false,
-        "focus": true
+        "focus": false
       }
     ],
     "security": {

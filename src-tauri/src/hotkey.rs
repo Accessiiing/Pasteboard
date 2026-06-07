@@ -56,7 +56,7 @@ fn key_to_code(key: &str) -> Option<Code> {
 pub fn on_trigger(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         if window.is_visible().unwrap_or(false) {
-            let _ = window.hide();
+            window::hide(&window);
         } else {
             let _ = app.emit_to("main", "navigate", "clipboard");
             window::show_at_cursor(app);
