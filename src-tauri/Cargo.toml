@@ -1,12 +1,12 @@
 [package]
-name = "pasteboard-v2"
+name = "pasteboard"
 version = "1.0.3"
 description = "Pasteboard v2 - 极简增强剪贴板"
 authors = ["lida"]
 edition = "2021"
 
 [lib]
-name = "pasteboard_v2_lib"
+name = "pasteboard_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

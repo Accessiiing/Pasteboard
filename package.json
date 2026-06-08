@@ -1,5 +1,5 @@
 {
-  "name": "pasteboard-v2",
+  "name": "pasteboard",
   "version": "1.0.3",
   "private": true,
   "description": "Pasteboard v2 - 极简增强剪贴板 (Tauri)",
