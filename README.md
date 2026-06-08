@@ -75,8 +75,8 @@ npm run build
 
 构建产物：
 
-- 主程序：`src-tauri/target/release/pasteboard-v2.exe`
-- 安装包：`src-tauri/target/release/bundle/nsis/Pasteboard_1.0.0_x64-setup.exe`
+- 主程序：`src-tauri/target/release/pasteboard.exe`
+- 安装包：`src-tauri/target/release/bundle/nsis/Pasteboard_1.0.3_x64-setup.exe`
 
 > ⚠️ `npm run dev` 只热重载 `src-tauri/`（Rust）。修改 `ui/` 下的前端文件后需要**重启**应用才能看到变化。
 >
