@@ -35,7 +35,7 @@ Windows 自带剪贴板历史只能存 20 条、不能持久化、不能管理�
 
 ## 🚀 安装使用
 
-1. 下载安装包 `Pasteboard_1.0.0_x64-setup.exe` 并运行。
+1. 下载安装包 `Pasteboard_1.0.3_x64-setup.exe` 并运行。
    - 首次安装若系统缺少 **WebView2 Runtime**，安装器会自动引导下载（Windows 11 自带，Windows 10 多数已预装）。
 2. 安装后程序常驻系统托盘（默认开机自启，静默后台）。
 
