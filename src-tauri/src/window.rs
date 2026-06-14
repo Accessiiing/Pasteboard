@@ -202,20 +202,23 @@ pub fn focus_window(app: &tauri::AppHandle) {
 static HOOK_APP: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
 
 /// 收起浮层：仅当其可见、且没有打开文件对话框时。
+/// 返回是否真的执行了收起——键盘钩子据此决定要不要吞掉这次 Esc。
 #[cfg(windows)]
-fn dismiss_panel() {
+fn dismiss_panel() -> bool {
     use std::sync::atomic::Ordering;
     if let Some(app) = HOOK_APP.get() {
         let st = app.state::<crate::state::AppState>();
         if st.dialog_open.load(Ordering::SeqCst) {
-            return; // 选择文件夹对话框打开时不收起
+            return false; // 选择文件夹对话框打开时不收起
         }
         if let Some(win) = app.get_webview_window("main") {
             if win.is_visible().unwrap_or(false) {
                 hide(&win);
+                return true;
             }
         }
     }
+    false
 }
 
 /// 前台窗口变化：焦点切到其它进程窗口时收起（Alt+Tab、点别的程序标题栏等）。
@@ -273,6 +276,32 @@ unsafe extern "system" fn mouse_proc(
     CallNextHookEx(HHOOK::default(), code, wparam, lparam)
 }
 
+/// 低级键盘钩子：浮层可见时按下 Esc 收起，并吞掉这次按键，
+/// 避免 Esc 继续下传给底层正在编辑的窗口（如资源管理器重命名框会因此取消重命名）。
+#[cfg(windows)]
+unsafe extern "system" fn keyboard_proc(
+    code: i32,
+    wparam: windows::Win32::Foundation::WPARAM,
+    lparam: windows::Win32::Foundation::LPARAM,
+) -> windows::Win32::Foundation::LRESULT {
+    use windows::Win32::Foundation::LRESULT;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CallNextHookEx, HHOOK, KBDLLHOOKSTRUCT, WM_KEYDOWN, WM_SYSKEYDOWN,
+    };
+    const VK_ESCAPE: u32 = 0x1B; // Esc 虚拟键码（直接用常量，免引入 KeyboardAndMouse feature）
+    // code < 0 时按约定必须原样转交，不做处理
+    if code >= 0 {
+        let msg = wparam.0 as u32;
+        if msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN {
+            let info = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
+            if info.vkCode == VK_ESCAPE && dismiss_panel() {
+                return LRESULT(1); // 已收起：吞掉 Esc，不再下传给底层窗口
+            }
+        }
+    }
+    CallNextHookEx(HHOOK::default(), code, wparam, lparam)
+}
+
 /// 安装自动收起钩子。需在主线程（有消息循环）调用，钩子随程序生命周期常驻。
 #[cfg(windows)]
 pub fn install_dismiss_hooks(app: &tauri::AppHandle) {
@@ -280,8 +309,8 @@ pub fn install_dismiss_hooks(app: &tauri::AppHandle) {
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::Accessibility::SetWinEventHook;
     use windows::Win32::UI::WindowsAndMessaging::{
-        SetWindowsHookExW, EVENT_SYSTEM_FOREGROUND, WH_MOUSE_LL, WINEVENT_OUTOFCONTEXT,
-        WINEVENT_SKIPOWNPROCESS,
+        SetWindowsHookExW, EVENT_SYSTEM_FOREGROUND, WH_KEYBOARD_LL, WH_MOUSE_LL,
+        WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
     };
     let _ = HOOK_APP.set(app.clone());
     unsafe {
@@ -298,5 +327,7 @@ pub fn install_dismiss_hooks(app: &tauri::AppHandle) {
         // 2) 全局低级鼠标钩子
         let hmod = GetModuleHandleW(None).unwrap_or_default();
         let _ = SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_proc), HINSTANCE(hmod.0), 0);
+        // 3) 全局低级键盘钩子：浮层可见时按 Esc 收起
+        let _ = SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), HINSTANCE(hmod.0), 0);
     }
 }
