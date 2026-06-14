@@ -296,6 +296,11 @@ body {
 .dropdown.show {
   display: flex;
 }
+/* 底部卡片：菜单翻到三点上方展开，避免被列表边缘裁切 */
+.dropdown.up {
+  top: auto;
+  bottom: calc(100% - 33px);
+}
 .menu-item {
   display: flex;
   align-items: center;

@@ -122,10 +122,7 @@ listEl.addEventListener("click", async (e) => {
 
   if (action === "menu") {
     e.stopPropagation();
-    const dd = card.querySelector(".dropdown");
-    const isShown = dd.classList.contains("show");
-    closeAllMenus();
-    if (!isShown) dd.classList.add("show");
+    toggleMenu(card);
     return;
   }
   if (action === "delete") { e.stopPropagation(); await invoke("delete_record", { id }); await loadRecords(); return; }
@@ -152,8 +149,28 @@ listEl.addEventListener("click", async (e) => {
 function closeAllMenus() {
   document.querySelectorAll(".dropdown.show").forEach(d => d.classList.remove("show"));
 }
+// 打开/收起某卡片的三点菜单——点三点按钮、右键卡片共用这一处逻辑
+function toggleMenu(card) {
+  const dd = card.querySelector(".dropdown");
+  const isShown = dd.classList.contains("show");
+  closeAllMenus();
+  if (isShown) return;
+  // 先按默认（向下）展开并量一次：若菜单底边超出列表可视区，就翻向上展开，避免被边缘裁切
+  dd.classList.remove("up");
+  dd.classList.add("show");
+  if (dd.getBoundingClientRect().bottom > listEl.getBoundingClientRect().bottom) {
+    dd.classList.add("up");
+  }
+}
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".dots") && !e.target.closest(".dropdown")) closeAllMenus();
+});
+// 右键卡片任意处 = 打开三点菜单（删除/固定/保存）；preventDefault 吃掉 WebView2 系统右键菜单
+listEl.addEventListener("contextmenu", (e) => {
+  const card = e.target.closest(".card");
+  if (!card) return;
+  e.preventDefault();
+  toggleMenu(card);
 });
 
 // ---------- 顶部操作 ----------
