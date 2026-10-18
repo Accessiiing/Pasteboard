@@ -59,6 +59,38 @@ const footerEl = document.getElementById("footer");
 let allRecords = [];
 let searchTerm = "";
 
+// 连续点击依次切换：全部 -> 单次图片 -> 锁定图片 -> 全部。
+// 锁定随当前应用进程保留；单次在成功粘贴或面板隐藏后复位。
+const imageFilterBtn = document.getElementById("btn-images");
+let imageFilter = "all";
+function setImageFilter(state) {
+  imageFilter = state;
+  imageFilterBtn.dataset.state = state;
+  imageFilterBtn.setAttribute("aria-pressed", String(state !== "all"));
+  const descriptions = {
+    all: ["图片：未筛选，点击单次筛选", "点击只看图片，再点锁定"],
+    once: ["图片：单次筛选，点击锁定", "单次筛选：粘贴或收起后恢复全部；再点锁定"],
+    locked: ["图片：已锁定，点击恢复全部", "图片筛选已锁定，点击恢复全部"],
+  };
+  const [label, title] = descriptions[state];
+  imageFilterBtn.setAttribute("aria-label", label);
+  imageFilterBtn.title = title;
+  closeAllMenus();
+  listEl.scrollTop = 0;
+  renderList();
+}
+function resetOnceImageFilter() {
+  if (imageFilter === "once") setImageFilter("all");
+}
+function onPanelHidden() {
+  resetOnceImageFilter();
+  collapseSearch();
+  closeAllMenus();
+}
+imageFilterBtn.addEventListener("click", () => {
+  setImageFilter({ all: "once", once: "locked", locked: "all" }[imageFilter]);
+});
+
 async function loadRecords() {
   allRecords = await invoke("list_records");
   renderList();
@@ -66,20 +98,24 @@ async function loadRecords() {
 
 function renderList() {
   const term = searchTerm.trim().toLowerCase();
-  const records = term
-    ? allRecords.filter(r => (r.preview || "").toLowerCase().includes(term))
-    : allRecords;
+  const imagesOnly = imageFilter !== "all";
+  const records = allRecords.filter(r =>
+    (!imagesOnly || r.kind === "image") &&
+    (!term || (r.preview || "").toLowerCase().includes(term))
+  );
 
   listEl.innerHTML = "";
   if (records.length === 0) {
     const e = document.createElement("div");
     e.className = "empty";
-    e.textContent = term ? "没有匹配的记录" : "暂无剪贴板记录";
+    e.textContent = term ? "没有匹配的记录" : imagesOnly ? "暂无图片记录" : "暂无剪贴板记录";
     listEl.appendChild(e);
   } else {
     for (const r of records) listEl.appendChild(buildCard(r));
   }
-  footerEl.textContent = `点击条目即可粘贴 · 共 ${allRecords.length} 条记录`;
+  footerEl.textContent = imagesOnly
+    ? `点击条目即可粘贴 · 共 ${records.length} 条图片`
+    : `点击条目即可粘贴 · 共 ${allRecords.length} 条记录`;
 }
 
 function buildCard(r) {
@@ -143,7 +179,13 @@ listEl.addEventListener("click", async (e) => {
 
   // 点击卡片主体 -> 粘贴
   card.classList.add("copied");
-  await invoke("paste_record", { id });
+  try {
+    await invoke("paste_record", { id });
+    resetOnceImageFilter();
+  } catch (err) {
+    card.classList.remove("copied");
+    showToast("粘贴失败：" + err);
+  }
 });
 
 function closeAllMenus() {
@@ -286,9 +328,15 @@ window.addEventListener("keydown", async (e) => {
   recording = false;
   editBtn.classList.remove("recording");
   hotkeySub.textContent = "点击右侧按键组合录入快捷键";
-  renderHotkeyCaps(spec);
-  try { await invoke("set_hotkey", { spec }); showToast("快捷键已更新为 " + spec); }
-  catch (err) { showToast("快捷键设置失败：" + err); }
+  try {
+    await invoke("set_hotkey", { spec });
+    currentSettings.hotkey = spec;
+    renderHotkeyCaps(spec);
+    showToast("快捷键已更新为 " + spec);
+  } catch (err) {
+    renderHotkeyCaps(currentSettings.hotkey);
+    showToast("快捷键设置失败：" + err);
+  }
 });
 
 // ---------- Toast ----------
@@ -310,6 +358,8 @@ window.addEventListener("keydown", (e) => {
 listen("records-updated", () => loadRecords());
 listen("navigate", (e) => showView(e.payload));
 listen("tauri://blur", collapseSearch);
+// no-activate 浮层不一定触发 blur，统一由原生隐藏入口通知。
+listen("panel-hidden", onPanelHidden);
 
 // ---------- 初始化 ----------
 loadRecords();
