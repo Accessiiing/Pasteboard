@@ -1,4 +1,4 @@
-use tauri::{Manager, PhysicalPosition, WebviewWindow};
+use tauri::{Emitter, Manager, PhysicalPosition, WebviewWindow};
 
 #[cfg(windows)]
 use windows::Win32::Foundation::HWND;
@@ -167,10 +167,13 @@ pub fn hide(window: &WebviewWindow) {
             unsafe {
                 let _ = ShowWindow(hwnd, SW_HIDE);
             }
+            let _ = window.emit("panel-hidden", ());
             return;
         }
     }
-    let _ = window.hide();
+    if window.hide().is_ok() {
+        let _ = window.emit("panel-hidden", ());
+    }
 }
 
 /// 让浮层临时获得键盘焦点（点击搜索框时调用）。
@@ -200,6 +203,73 @@ pub fn focus_window(app: &tauri::AppHandle) {
 
 #[cfg(windows)]
 static HOOK_APP: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+
+#[cfg(windows)]
+static WIN_V_HOOK_ENABLED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+#[cfg(windows)]
+static LEFT_WIN_DOWN: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+#[cfg(windows)]
+static RIGHT_WIN_DOWN: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+#[cfg(windows)]
+static V_SUPPRESSED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Win+V 无法通过 RegisterHotKey 注册，启用时由 WH_KEYBOARD_LL 强制捕获。
+#[cfg(windows)]
+pub fn set_win_v_hook_enabled(enabled: bool) {
+    use std::sync::atomic::Ordering;
+    WIN_V_HOOK_ENABLED.store(enabled, Ordering::SeqCst);
+    LEFT_WIN_DOWN.store(false, Ordering::SeqCst);
+    RIGHT_WIN_DOWN.store(false, Ordering::SeqCst);
+    V_SUPPRESSED.store(false, Ordering::SeqCst);
+}
+
+#[cfg(not(windows))]
+pub fn set_win_v_hook_enabled(_enabled: bool) {}
+
+#[cfg(windows)]
+fn trigger_panel_from_hook() {
+    if let Some(app) = HOOK_APP.get() {
+        let app = app.clone();
+        // 钩子回调必须尽快返回，把窗口操作投递给 Tauri 主线程执行。
+        let _ = app.clone().run_on_main_thread(move || crate::hotkey::on_trigger(&app));
+    }
+}
+
+/// 当 Win 组合键的主键被钩子吞掉后，Windows 会误以为用户只按了 Win，
+/// 从而在 Win 抬起时打开开始菜单。发送一个没有实际功能的虚拟键作为菜单掩码，
+/// 让系统保留“Win 参与过组合键”的状态，同时不给前台应用产生可见输入。
+#[cfg(windows)]
+fn send_win_menu_mask() {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
+        KEYEVENTF_KEYUP, VIRTUAL_KEY,
+    };
+
+    // 0xE8 是未分配的虚拟键；键盘重映射工具常用它避免 Win/Alt 抬起时弹出菜单。
+    const VK_MENU_MASK: VIRTUAL_KEY = VIRTUAL_KEY(0xE8);
+    const MASK_EXTRA_INFO: usize = 0x5042_4D4B; // "PBMK"
+
+    let key = |flags: KEYBD_EVENT_FLAGS| INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: VK_MENU_MASK,
+                wScan: 0,
+                dwFlags: flags,
+                time: 0,
+                dwExtraInfo: MASK_EXTRA_INFO,
+            },
+        },
+    };
+    let inputs = [key(KEYBD_EVENT_FLAGS(0)), key(KEYEVENTF_KEYUP)];
+    unsafe {
+        let _ = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+    }
+}
 
 /// 收起浮层：仅当其可见、且没有打开文件对话框时。
 /// 返回是否真的执行了收起——键盘钩子据此决定要不要吞掉这次 Esc。
@@ -276,25 +346,55 @@ unsafe extern "system" fn mouse_proc(
     CallNextHookEx(HHOOK::default(), code, wparam, lparam)
 }
 
-/// 低级键盘钩子：浮层可见时按下 Esc 收起，并吞掉这次按键，
-/// 避免 Esc 继续下传给底层正在编辑的窗口（如资源管理器重命名框会因此取消重命名）。
+/// 低级键盘钩子：
+/// 1) 浮层可见时按下 Esc 收起并吞键；
+/// 2) Win+V 被选为唤起键时强制捕获，覆盖 Windows 自带剪贴板历史。
 #[cfg(windows)]
 unsafe extern "system" fn keyboard_proc(
     code: i32,
     wparam: windows::Win32::Foundation::WPARAM,
     lparam: windows::Win32::Foundation::LPARAM,
 ) -> windows::Win32::Foundation::LRESULT {
+    use std::sync::atomic::Ordering;
     use windows::Win32::Foundation::LRESULT;
     use windows::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, HHOOK, KBDLLHOOKSTRUCT, WM_KEYDOWN, WM_SYSKEYDOWN,
+        CallNextHookEx, HHOOK, KBDLLHOOKSTRUCT, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN,
+        WM_SYSKEYUP,
     };
     const VK_ESCAPE: u32 = 0x1B; // Esc 虚拟键码（直接用常量，免引入 KeyboardAndMouse feature）
+    const VK_V: u32 = 0x56;
+    const VK_LWIN: u32 = 0x5B;
+    const VK_RWIN: u32 = 0x5C;
     // code < 0 时按约定必须原样转交，不做处理
     if code >= 0 {
         let msg = wparam.0 as u32;
-        if msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN {
+        let is_down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
+        let is_up = msg == WM_KEYUP || msg == WM_SYSKEYUP;
+        if is_down || is_up {
             let info = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
-            if info.vkCode == VK_ESCAPE && dismiss_panel() {
+
+            match info.vkCode {
+                VK_LWIN => LEFT_WIN_DOWN.store(is_down, Ordering::SeqCst),
+                VK_RWIN => RIGHT_WIN_DOWN.store(is_down, Ordering::SeqCst),
+                VK_V if WIN_V_HOOK_ENABLED.load(Ordering::SeqCst) => {
+                    let win_down = LEFT_WIN_DOWN.load(Ordering::SeqCst)
+                        || RIGHT_WIN_DOWN.load(Ordering::SeqCst);
+                    if is_down && win_down {
+                        // 第一次按下时触发；键盘自动重复只吞键，不重复切换面板。
+                        if !V_SUPPRESSED.swap(true, Ordering::SeqCst) {
+                            send_win_menu_mask();
+                            trigger_panel_from_hook();
+                        }
+                        return LRESULT(1);
+                    }
+                    if is_up && V_SUPPRESSED.swap(false, Ordering::SeqCst) {
+                        return LRESULT(1);
+                    }
+                }
+                _ => {}
+            }
+
+            if is_down && info.vkCode == VK_ESCAPE && dismiss_panel() {
                 return LRESULT(1); // 已收起：吞掉 Esc，不再下传给底层窗口
             }
         }
@@ -327,7 +427,7 @@ pub fn install_dismiss_hooks(app: &tauri::AppHandle) {
         // 2) 全局低级鼠标钩子
         let hmod = GetModuleHandleW(None).unwrap_or_default();
         let _ = SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_proc), HINSTANCE(hmod.0), 0);
-        // 3) 全局低级键盘钩子：浮层可见时按 Esc 收起
+        // 3) 全局低级键盘钩子：Esc 收起 + 强制捕获 Win+V
         let _ = SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), HINSTANCE(hmod.0), 0);
     }
 }

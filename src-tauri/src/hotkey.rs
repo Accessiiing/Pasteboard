@@ -1,6 +1,11 @@
 use crate::window;
+use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
+
+/// 当前由 global-shortcut 插件注册的普通快捷键。
+/// Win+V 由低级键盘钩子接管，因此不会存放在这里。
+static REGISTERED_SHORTCUT: Mutex<Option<Shortcut>> = Mutex::new(None);
 
 /// 把 "Ctrl+Shift+V" / "Alt+V" 这类字符串解析为 Shortcut。
 pub fn parse(spec: &str) -> Option<Shortcut> {
@@ -52,6 +57,25 @@ fn key_to_code(key: &str) -> Option<Code> {
     None
 }
 
+/// Win+V 是 Windows 剪贴板历史的保留快捷键，RegisterHotKey 会拒绝注册。
+/// 对这个唯一的特殊组合改用项目已有的 WH_KEYBOARD_LL 钩子强制捕获。
+fn is_forced_win_v(spec: &str) -> bool {
+    let mut has_win = false;
+    let mut has_v = false;
+    let mut parts = 0;
+
+    for part in spec.split('+').map(str::trim).filter(|p| !p.is_empty()) {
+        parts += 1;
+        match part.to_ascii_lowercase().as_str() {
+            "win" | "super" | "meta" | "cmd" => has_win = true,
+            "v" => has_v = true,
+            _ => return false,
+        }
+    }
+
+    parts == 2 && has_win && has_v
+}
+
 /// 切换主窗口显示：已显示则隐藏，否则在光标处弹出。
 pub fn on_trigger(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -65,8 +89,53 @@ pub fn on_trigger(app: &AppHandle) {
 }
 
 pub fn register(app: &AppHandle, spec: &str) -> Result<(), String> {
-    let shortcut = parse(spec).ok_or_else(|| format!("无法解析快捷键: {}", spec))?;
     let gs = app.global_shortcut();
-    let _ = gs.unregister_all();
-    gs.register(shortcut).map_err(|e| e.to_string())
+    let mut current = REGISTERED_SHORTCUT
+        .lock()
+        .map_err(|_| "快捷键状态锁已损坏".to_string())?;
+
+    if is_forced_win_v(spec) {
+        // 先启用钩子，再移除旧快捷键，切换过程中始终至少有一种唤起方式可用。
+        window::set_win_v_hook_enabled(true);
+        if let Some(old) = current.take() {
+            if let Err(err) = gs.unregister(old) {
+                window::set_win_v_hook_enabled(false);
+                *current = Some(old);
+                return Err(err.to_string());
+            }
+        }
+        return Ok(());
+    }
+
+    let shortcut = parse(spec).ok_or_else(|| format!("无法解析快捷键: {}", spec))?;
+    if current.as_ref() == Some(&shortcut) {
+        window::set_win_v_hook_enabled(false);
+        return Ok(());
+    }
+
+    // 新快捷键先注册成功，再撤销旧快捷键。这样遇到系统占用时旧快捷键不会失效。
+    gs.register(shortcut).map_err(|e| e.to_string())?;
+    if let Some(old) = current.replace(shortcut) {
+        if let Err(err) = gs.unregister(old) {
+            let _ = gs.unregister(shortcut);
+            *current = Some(old);
+            return Err(err.to_string());
+        }
+    }
+    window::set_win_v_hook_enabled(false);
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_forced_win_v;
+
+    #[test]
+    fn recognizes_only_plain_win_v() {
+        assert!(is_forced_win_v("Win+V"));
+        assert!(is_forced_win_v("v + meta"));
+        assert!(!is_forced_win_v("Alt+Win+V"));
+        assert!(!is_forced_win_v("Win+F"));
+        assert!(!is_forced_win_v("V"));
+    }
 }
